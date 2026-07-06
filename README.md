@@ -1,5 +1,7 @@
 # Slapstack Studio
 
+![pic](pic2.png)
+
 **Spawn Gabor-atom layers with AI, move them, occlude them, and watch belief propagation keep track.**
 
 Slapstack Studio is a neuro-symbolic scene editor. It splits the generative AI problem into two distinct halves:
