@@ -1,0 +1,9 @@
+gradio
+diffusers
+transformers
+torch
+torchvision
+numpy
+Pillow
+fastapi
+uvicorn

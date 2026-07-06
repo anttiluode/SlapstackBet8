@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Slapstack Studio — spawn objects, move them, in Gabor space</title>
+<style>
+:root {
+  --chassis:#1d222e; --panel:#262c3b; --panel-edge:#333b4f; --well:#10131b;
+  --ink:#e3e7f0; --muted:#8d96ab; --phosphor:#ffb454; --outlier:#78808f;
+  --entropy:#c86bff; --go:#7fd98a; --bad:#ff7a7a;
+  --mono: ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace;
+  --cond:"Bahnschrift","Arial Narrow","Roboto Condensed",sans-serif;
+}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%}
+body{background:var(--chassis);color:var(--ink);font-family:var(--mono);
+  font-size:13px;display:flex;flex-direction:column;overflow:hidden}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+header{display:flex;align-items:baseline;gap:14px;padding:10px 16px 9px;
+  border-bottom:1px solid var(--panel-edge);flex-wrap:wrap}
+header h1{font-family:var(--cond);font-size:20px;letter-spacing:2.5px;font-weight:700}
+header h1 em{color:var(--phosphor);font-style:normal}
+header .claim{color:var(--muted);font-size:11.5px}
+#state-lamp{margin-left:auto;font-size:11px;letter-spacing:1.5px;padding:3px 10px;
+  border-radius:3px;border:1px solid var(--panel-edge);color:var(--muted)}
+#state-lamp.soup{color:var(--outlier);border-color:var(--outlier)}
+#state-lamp.binding{color:var(--entropy);border-color:var(--entropy)}
+#state-lamp.bound{color:var(--go);border-color:var(--go)}
+main{flex:1;display:flex;gap:12px;padding:12px 16px;min-height:0}
+#stage-wrap{flex:1;display:flex;align-items:center;justify-content:center;min-width:0}
+#stage{position:relative;background:var(--well);border:1px solid var(--panel-edge);
+  border-radius:6px;box-shadow:inset 0 0 60px rgba(0,0,0,.55)}
+#stage canvas{position:absolute;inset:0;width:100%;height:100%;border-radius:6px}
+#overlay-canvas{cursor:grab}
+#overlay-canvas.dragging{cursor:grabbing}
+#stage .hint{position:absolute;bottom:7px;left:0;right:0;text-align:center;
+  color:var(--muted);font-size:10.5px;pointer-events:none;text-shadow:0 1px 3px #000}
+aside{width:330px;flex-shrink:0;display:flex;flex-direction:column;gap:9px;
+  overflow-y:auto;padding-right:2px}
+.card{background:var(--panel);border:1px solid var(--panel-edge);border-radius:6px;
+  padding:10px 11px}
+.card h2{font-family:var(--cond);font-size:12px;letter-spacing:2px;font-weight:700;
+  color:var(--muted);margin-bottom:8px}
+button{font-family:var(--mono);font-size:12px;background:var(--well);color:var(--ink);
+  border:1px solid var(--panel-edge);border-radius:4px;padding:6px 11px;cursor:pointer}
+button:hover{border-color:var(--phosphor);color:var(--phosphor)}
+button:focus-visible{outline:2px solid var(--phosphor);outline-offset:1px}
+button:disabled{opacity:.35;cursor:default}
+button:disabled:hover{border-color:var(--panel-edge);color:var(--ink)}
+button.primary{border-color:var(--phosphor);color:var(--phosphor)}
+.row{display:flex;gap:7px;align-items:center}
+.row+.row{margin-top:7px}
+.readout{color:var(--phosphor)} .dim{color:var(--muted)} .spacer{flex:1}
+#bind-meter{height:4px;background:var(--well);border-radius:2px;overflow:hidden;margin-top:8px}
+#bind-meter>div{height:100%;width:0%;background:var(--entropy)}
+#metrics{display:grid;grid-template-columns:1fr 1fr;gap:3px 10px;margin-top:8px;font-size:11.5px}
+.layer{border-top:1px solid var(--panel-edge);padding:7px 0;border-radius:3px}
+.layer:first-of-type{border-top:0}
+.layer.sel{outline:1px solid var(--phosphor);outline-offset:2px}
+.layer .name{display:flex;align-items:center;gap:7px;cursor:pointer}
+.swatch{width:10px;height:10px;border-radius:2px;flex-shrink:0}
+.layer .pose{color:var(--muted);font-size:10.5px;margin:4px 0 5px;min-height:13px}
+.belief-bar{flex:1;height:5px;background:var(--well);border-radius:3px;overflow:hidden;max-width:80px}
+.belief-bar>div{height:100%;background:var(--go)}
+.layer .ctl{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px}
+.layer .ctl button{padding:3px 7px;font-size:10.5px}
+#library{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.chip{display:flex;align-items:center;gap:5px;background:var(--well);
+  border:1px solid var(--panel-edge);border-radius:12px;padding:3px 9px;font-size:11px}
+.chip button{border:0;padding:0 2px;font-size:12px;background:none}
+label.tog{display:flex;gap:8px;align-items:center;cursor:pointer;padding:2px 0;font-size:12px}
+label.tog input{accent-color:var(--phosphor)}
+input[type=range]{flex:1;accent-color:var(--phosphor)}
+input[type=text],textarea{font-family:var(--mono);font-size:12px;background:var(--well);
+  color:var(--ink);border:1px solid var(--panel-edge);border-radius:4px;padding:6px 8px;width:100%}
+input[type=text]:focus-visible,textarea:focus-visible{outline:2px solid var(--phosphor);border-color:transparent}
+#spawn-status,#prompt-log{color:var(--muted);font-size:10.5px;margin-top:6px;
+  min-height:13px;white-space:pre-wrap}
+#ledger p{font-size:10.5px;line-height:1.5;color:var(--muted);margin-bottom:6px}
+#ledger b{color:var(--go);font-weight:400}
+#ledger .no{color:var(--entropy)}
+details summary{cursor:pointer;font-family:var(--cond);font-size:12px;letter-spacing:2px;color:var(--muted)}
+details[open] summary{margin-bottom:7px}
+input[type=file]{font-size:10.5px;color:var(--muted);max-width:170px}
+@media (max-width:900px){main{flex-direction:column;overflow-y:auto}body{overflow:auto}aside{width:100%}}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>SLAPSTACK <em>STUDIO</em></h1>
+  <span class="claim">spawn layers with AI &middot; scramble &middot; bind &middot; grab &middot; stack &middot; every entity is a posterior</span>
+  <span id="state-lamp" class="soup">ATOM SOUP</span>
+</header>
+
+<main>
+  <div id="stage-wrap">
+    <div id="stage">
+      <canvas id="scene-canvas"></canvas>
+      <canvas id="overlay-canvas"></canvas>
+      <div class="hint">drag = pose clamp &middot; wheel rotate &middot; shift+wheel scale &middot; shift+click = semantic hint for selected layer</div>
+    </div>
+  </div>
+
+  <aside>
+    <div class="card">
+      <h2>SCENE</h2>
+      <div class="row">
+        <button id="btn-scramble">Scramble</button>
+        <button id="btn-bind" class="primary">Bind</button>
+        <span class="spacer"></span>
+        <span class="dim">noise</span>
+        <input type="range" id="noise" min="0" max="10" value="1" style="width:60px" aria-label="observation noise">
+      </div>
+      <div class="row">
+        <span class="dim">composite</span>
+        <label class="tog"><input type="radio" name="comp" value="field" checked> field</label>
+        <label class="tog"><input type="radio" name="comp" value="painter"> painter (depth)</label>
+        <span class="spacer"></span>
+        <label class="tog"><input type="checkbox" id="auto-occ" checked> depth occlusion</label>
+      </div>
+      <div id="bind-meter"><div></div></div>
+      <div id="metrics">
+        <span class="dim">binding vs truth</span><span class="readout" id="m-acc">—</span>
+        <span class="dim">mean entropy</span><span class="readout" id="m-ent">—</span>
+        <span class="dim">BP iterations</span><span class="readout" id="m-it">—</span>
+        <span class="dim">atoms in scene</span><span class="readout" id="m-n">—</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>LAYERS <span class="dim" style="letter-spacing:0">(front is highest)</span></h2>
+      <div id="layer-list"></div>
+      <div class="dim" style="font-size:10.5px;margin-top:6px">library — place to add to the scene:</div>
+      <div id="library"></div>
+    </div>
+
+    <div class="card">
+      <h2>SPAWN A LAYER</h2>
+      <div class="row">
+        <input type="text" id="spawn-prompt" placeholder='prompt, e.g. "a red rocket, flat colors"'>
+      </div>
+      <div class="row">
+        <input type="text" id="spawn-token" placeholder="matte token (e.g. rocket)" style="width:55%">
+        <button id="btn-spawn-text">Distill (GPU)</button>
+      </div>
+      <div class="row">
+        <input type="file" id="spawn-file" accept="image/*">
+        <button id="btn-spawn-img">Fit (CPU)</button>
+      </div>
+      <div class="row">
+        <input type="text" id="spawn-json" placeholder="or paste layer JSON">
+        <button id="btn-spawn-json">Add</button>
+      </div>
+      <div id="spawn-status">Distill runs Stable Diffusion score distillation with a cross-attention matte (GPU Space only, untested — first run is a smoke test). Fit trains atoms to your image on CPU (~1 min; objects on plain mid-gray come out compact).</div>
+    </div>
+
+    <div class="card">
+      <h2>PROMPT AS INTERVENTION</h2>
+      <div class="row">
+        <input type="text" id="prompt" placeholder='e.g. "move the boat left, put the star behind the tractor"'>
+        <button id="btn-prompt">Do</button>
+      </div>
+      <div id="prompt-log">Commands become pose clamps and depth moves; BP re-settles. Free-form uses Claude when this runs inside claude.ai; a local grammar otherwise.</div>
+    </div>
+
+    <div class="card">
+      <h2>OVERLAYS</h2>
+      <label class="tog"><input type="checkbox" id="ov-atoms" checked> atoms, colored by belief</label>
+      <label class="tog"><input type="checkbox" id="ov-own"> ownership tint</label>
+      <label class="tog"><input type="checkbox" id="ov-ent"> entropy border glow</label>
+      <label class="tog"><input type="checkbox" id="ov-pose" checked> pose belief (crosshair + covariance)</label>
+      <label class="tog"><input type="checkbox" id="ov-hints" checked> semantic hints</label>
+    </div>
+
+    <div class="card" id="ledger">
+      <details>
+        <summary>HONEST LEDGER</summary>
+        <p><b>Verified in this build:</b> the BP core matches the SlapstackBet6 Python (transform 2e-16, render MSE 8.6e-8, identical binding); drag = pose clamp + re-settle; identity persists through occlusion; depth occlusion removes evidence honestly (marginals revert toward the prior, coverage releases when moved away); the semantic likelihood factor resolves the twins case (two identical stars: 0.05 acc on geometry alone, 0.99 with location priors) and a mildly wrong prior is overridden by evidence; image&rarr;layer fitting runs end to end on CPU.</p>
+        <p><span class="no">Not verified:</span> text&rarr;layer (SDS) and cross-attention matte are line-for-line adaptations of the verified Bet-5 GPU loop but have NOT been executed on a GPU — first run is a smoke test; SD attention maps flicker across seeds, which is why they enter BP as a prior with a weight, never as truth. Real-photo scene&rarr;atoms remains open. Painter compositing and the alpha matte are presentation choices, not the additive field model.</p>
+      </details>
+    </div>
+  </aside>
+</main>
+
+<script>
+/*CORE*/
+</script>
+<script>
+/*STUDIO_CORE*/
+</script>
+<script>
+const BUILTINS = /*BUILTINS*/null;
+</script>
+<script>
+"use strict";
+/* ============================ studio app ============================ */
+
+const PALETTE = [
+  ["#ff6b5e",[255,107,94]], ["#5ec8ff",[94,200,255]], ["#ffd35e",[255,211,94]],
+  ["#7fd98a",[127,217,138]], ["#c86bff",[200,107,255]], ["#5effd0",[94,255,208]],
+  ["#ff8fc7",[255,143,199]], ["#b0b8ff",[176,184,255]],
+];
+const OUTLIER_RGB = [120,128,143];
+const RES = 192, OWN_RES = 128;
+const NOISE_SCALE = [1,1,1,.3,.3,20,3,.5,.5,.5];
+const HINT_W = 6.0, HINT_SIG = 0.4;
+
+/* ------------- state ------------- */
+const S = {
+  phase: "soup",
+  layers: [],            // {id,name,color,rgb,template,placed,pose,hidden,depth,hints:[]}
+  selected: -1,          // index into layers
+  obs: [], gt: [],       // gt = placed-order index, -1 clutter
+  placed: [],            // layer indices in placed order (BP object order)
+  marg: null, mu: null, Sig: null, assign: null,
+  evid: [], covFrac: [],
+  groupPre: [], groupAlpha: [],   // per placed group + clutter last
+  ownField: null, coastT: [],
+};
+let nextDepth = 1, nextId = 1;
+
+function addLayer(name, template, autoPlace) {
+  const [color, rgb] = PALETTE[(S.layers.length) % PALETTE.length];
+  const L = { id: nextId++, name, color, rgb, template, placed: false,
+              pose: [0,0,0,Math.log(0.5)], hidden: false, depth: 0, hints: [] };
+  S.layers.push(L);
+  if (autoPlace) placeLayer(S.layers.length - 1);
+  else { renderLibrary(); }
+  return L;
+}
+function placeLayer(li) {
+  const L = S.layers[li];
+  L.placed = true; L.hidden = false; L.depth = nextDepth++;
+  L.pose = [ -0.3 + 0.6*rand(), -0.3 + 0.6*rand(), -Math.PI + TAU*rand(),
+             Math.log(0.45 + 0.2*rand()) ];
+  rebuildScene();
+}
+function removeLayer(li) {
+  S.layers[li].placed = false;
+  rebuildScene();
+}
+
+/* ------------- scene construction ------------- */
+let rngState = 22222;
+function rand(){ rngState=(rngState*1103515245+12345)&0x7fffffff; return rngState/0x7fffffff; }
+
+function rebuildScene() {
+  S.placed = S.layers.map((L,i)=>L.placed?i:-1).filter(i=>i>=0);
+  const noiseAmt = 0.006 * Math.pow(3, +document.getElementById("noise").value / 3);
+  S.obs = []; S.gt = [];
+  S.placed.forEach((li,k)=>{
+    for (const a of transformAtoms(S.layers[li].template, S.layers[li].pose)) {
+      S.obs.push(a); S.gt.push(k);
+    }
+  });
+  for (let i=0;i<12;i++){
+    const su=0.04+0.08*rand();
+    S.obs.push([-0.95+1.9*rand(),-0.95+1.9*rand(),-Math.PI/2+Math.PI*rand(),
+      su,su*(0.4+0.5*rand()),4+10*rand(),TAU*rand(),rand(),rand(),rand()]);
+    S.gt.push(-1);
+  }
+  for (const a of S.obs) for(let q=0;q<10;q++){
+    const g=Math.sqrt(-2*Math.log(rand()+1e-9))*Math.cos(TAU*rand());
+    a[q]+=g*noiseAmt*NOISE_SCALE[q];
+  }
+  for (const a of S.obs){a[3]=Math.max(a[3],.012);a[4]=Math.max(a[4],.008);a[5]=Math.max(a[5],.5);}
+  S.marg=null; S.mu=null; S.Sig=null; S.assign=null;
+  S.evid=S.obs.map(()=>true);
+  S.covFrac=S.placed.map(()=>0);
+  S.coastT=S.placed.map(()=>0);
+  S.ownField=null;
+  setPhase("soup");
+  rebuildGroupBuffers();
+  renderScene(); drawOverlay(); renderLayerList(); renderLibrary(); updatePanels();
+}
+function scramble(){
+  for (const li of S.placed){
+    S.layers[li].pose=[-0.35+0.7*rand(),-0.35+0.7*rand(),-Math.PI+TAU*rand(),
+                       Math.log(0.4+0.25*rand())];
+  }
+  rebuildScene();
+}
+
+/* ------------- believed grouping (persistent through occlusion) ------------- */
+function believedGroup(i){ return S.assign ? S.assign[i] : -2; }
+function updateAssign(){
+  if(!S.marg){S.assign=null;return;}
+  const K=S.placed.length;
+  if(!S.assign) S.assign=new Array(S.obs.length).fill(-1);
+  for(let i=0;i<S.obs.length;i++){
+    if(S.assign[i]>=0 && !S.evid[i]) continue;      // no evidence: identity persists
+    const m=S.marg[i]; let b=0;
+    for(let k=1;k<=K;k++) if(m[k]>m[b]) b=k;
+    S.assign[i]= b===K ? -1 : b;
+  }
+}
+function groupAtomIdx(k){
+  const out=[];
+  for(let i=0;i<S.obs.length;i++) if(believedGroup(i)===k) out.push(i);
+  return out;
+}
+
+/* ------------- rendering ------------- */
+const stage=document.getElementById("stage");
+const sceneC=document.getElementById("scene-canvas");
+const overC=document.getElementById("overlay-canvas");
+sceneC.width=sceneC.height=RES;
+let CSS=600;
+function fitStage(){
+  const wrap=document.getElementById("stage-wrap");
+  CSS=Math.max(280,Math.floor(Math.min(wrap.clientWidth,wrap.clientHeight)-8));
+  stage.style.width=stage.style.height=CSS+"px";
+  overC.width=overC.height=CSS*(window.devicePixelRatio||1);
+  drawOverlay();
+}
+window.addEventListener("resize",fitStage);
+
+function rebuildGroupBuffers(){
+  const K=S.placed.length;
+  S.groupPre=[]; S.groupAlpha=[];
+  for(let g=0;g<=K;g++) S.groupPre.push(new Float32Array(3*RES*RES));
+  const groupOf=i=>{ const g=S.marg?believedGroup(i):S.gt[i]; return g>=0?g:K; };
+  for(let i=0;i<S.obs.length;i++){
+    const g=groupOf(i);
+    if(g<K && S.layers[S.placed[g]].hidden) continue;
+    renderPre([S.obs[i]],RES,S.groupPre[g]);
+  }
+  for(let g=0;g<=K;g++) S.groupAlpha.push(alphaFromPre(S.groupPre[g],RES));
+}
+function rebuildOneGroup(k){
+  S.groupPre[k]=new Float32Array(3*RES*RES);
+  if(!S.layers[S.placed[k]].hidden)
+    renderPre(groupAtomIdx(k).map(i=>S.obs[i]),RES,S.groupPre[k]);
+  S.groupAlpha[k]=alphaFromPre(S.groupPre[k],RES);
+}
+const sceneCtx=sceneC.getContext("2d");
+const compositePre=new Float32Array(3*RES*RES);
+const sceneImg=new ImageData(RES,RES);
+function compMode(){ return document.querySelector('input[name=comp]:checked').value; }
+function renderScene(){
+  const K=S.placed.length;
+  if(compMode()==="field"){
+    compositePre.fill(0);
+    for(const buf of S.groupPre)
+      for(let i=0;i<compositePre.length;i++) compositePre[i]+=buf[i];
+    sigmoidField(compositePre,RES,sceneImg.data);
+  } else {
+    // painter: clutter at the back, then placed layers by depth
+    const order=[K, ...S.placed.map((li,k)=>k)
+      .sort((a,b)=>S.layers[S.placed[a]].depth-S.layers[S.placed[b]].depth)];
+    compositePainter(order,S.groupPre,S.groupAlpha,RES,sceneImg.data);
+  }
+  sceneCtx.putImageData(sceneImg,0,0);
+}
+
+function w2p(x){return (x+1)/2*overC.width;}
+function p2w(px){return px/overC.width*2-1;}
+
+const ovAtoms=document.getElementById("ov-atoms"),ovOwn=document.getElementById("ov-own"),
+      ovEnt=document.getElementById("ov-ent"),ovPose=document.getElementById("ov-pose"),
+      ovHints=document.getElementById("ov-hints");
+for(const el of [ovAtoms,ovOwn,ovEnt,ovPose,ovHints]) el.addEventListener("change",drawOverlay);
+document.querySelectorAll('input[name=comp]').forEach(el=>
+  el.addEventListener("change",()=>{renderScene();}));
+
+function drawOverlay(){
+  const ctx=overC.getContext("2d");
+  ctx.clearRect(0,0,overC.width,overC.height);
+  const px1=overC.width/CSS;
+  const K=S.placed.length;
+  const colOf=k=>S.layers[S.placed[k]];
+
+  if(S.ownField && (ovOwn.checked||ovEnt.checked)){
+    const {P,ent,support}=S.ownField;
+    const im=ctx.createImageData(OWN_RES,OWN_RES);
+    for(let i=0;i<OWN_RES*OWN_RES;i++){
+      if(!support[i]) continue;
+      let r=0,g=0,b=0,a=0;
+      if(ovOwn.checked){
+        let best=0;
+        for(let k=1;k<=K;k++) if(P[k][i]>P[best][i]) best=k;
+        const rgb=best===K?OUTLIER_RGB:colOf(best).rgb;
+        r=rgb[0];g=rgb[1];b=rgb[2];a=90*P[best][i];
+      }
+      if(ovEnt.checked){
+        const maxE=Math.log2(K+1);
+        const e=Math.min(1,ent[i]/maxE), ea=160*e*e;
+        if(ea>a){r=200;g=107;b=255;a=ea;}
+      }
+      im.data[4*i]=r;im.data[4*i+1]=g;im.data[4*i+2]=b;im.data[4*i+3]=a;
+    }
+    const tmp=document.createElement("canvas");
+    tmp.width=tmp.height=OWN_RES;
+    tmp.getContext("2d").putImageData(im,0,0);
+    ctx.imageSmoothingEnabled=true;
+    ctx.drawImage(tmp,0,0,overC.width,overC.height);
+  }
+
+  if(ovAtoms.checked){
+    for(let i=0;i<S.obs.length;i++){
+      const a=S.obs[i], g=believedGroup(i);
+      if(g>=0 && S.layers[S.placed[g]].hidden) continue;
+      let rgb=OUTLIER_RGB, alpha=0.5;
+      if(g===-2){rgb=[150,155,168];alpha=0.55;}
+      else if(g>=0){rgb=colOf(g).rgb;alpha=S.evid[i]?0.25+0.75*S.marg[i][g]:0.35;}
+      else if(S.marg){alpha=0.25+0.55*S.marg[i][K];}
+      const len=Math.max(3*px1,a[3]*overC.width*0.5);
+      const cx=w2p(a[0]),cy=w2p(a[1]);
+      const dx=Math.cos(a[2])*len/2,dy=Math.sin(a[2])*len/2;
+      ctx.strokeStyle=`rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha})`;
+      ctx.lineWidth=1.6*px1;
+      ctx.setLineDash(g>=0&&!S.evid[i]?[3*px1,3*px1]:[]);
+      ctx.beginPath();ctx.moveTo(cx-dx,cy-dy);ctx.lineTo(cx+dx,cy+dy);ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  }
+
+  if(ovHints.checked){
+    for(let k=0;k<K;k++){
+      const L=colOf(k);
+      for(const h of L.hints){
+        ctx.strokeStyle=L.color; ctx.lineWidth=1.2*px1; ctx.setLineDash([2*px1,3*px1]);
+        ctx.beginPath();ctx.arc(w2p(h[0]),w2p(h[1]),HINT_SIG*overC.width/2,0,TAU);ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.beginPath();ctx.arc(w2p(h[0]),w2p(h[1]),3*px1,0,TAU);
+        ctx.fillStyle=L.color;ctx.fill();
+      }
+    }
+  }
+
+  if(ovPose.checked && S.mu){
+    for(let k=0;k<K;k++){
+      const mu=S.mu[k],Sg=S.Sig[k],L=colOf(k);
+      const cx=w2p(mu[0]),cy=w2p(mu[1]);
+      ctx.strokeStyle=L.color;ctx.lineWidth=1.2*px1;
+      ctx.beginPath();
+      ctx.moveTo(cx-7*px1,cy);ctx.lineTo(cx+7*px1,cy);
+      ctx.moveTo(cx,cy-7*px1);ctx.lineTo(cx,cy+7*px1);ctx.stroke();
+      const Ln=26*px1*Math.exp(mu[3]);
+      ctx.beginPath();ctx.moveTo(cx,cy);
+      ctx.lineTo(cx+Math.cos(mu[2])*Ln,cy+Math.sin(mu[2])*Ln);ctx.stroke();
+      const coast=S.coastT[k], q=coast*coast*0.0012;
+      const a11=Sg[0][0]+q,a12=Sg[0][1],a22=Sg[1][1]+q;
+      const tr=a11+a22,det=a11*a22-a12*a12;
+      const disc=Math.sqrt(Math.max(0,tr*tr/4-det));
+      const l1=tr/2+disc,l2=Math.max(1e-12,tr/2-disc);
+      const ang=Math.atan2(l1-a11,a12||1e-12);
+      const ghost=L.hidden||S.covFrac[k]>0.7;
+      ctx.save();ctx.translate(cx,cy);ctx.rotate(-ang+Math.PI/2);
+      ctx.setLineDash(ghost?[5*px1,4*px1]:[]);
+      ctx.beginPath();
+      ctx.ellipse(0,0,2*Math.sqrt(l1)*overC.width/2,2*Math.sqrt(l2)*overC.width/2,0,0,TAU);
+      ctx.stroke();ctx.restore();ctx.setLineDash([]);
+      if(ghost){
+        ctx.fillStyle=L.color;
+        ctx.font=`${11*px1}px ${getComputedStyle(document.body).fontFamily}`;
+        ctx.fillText("believed, unseen",cx+10*px1,cy-10*px1);
+      }
+    }
+  }
+}
+
+/* ------------- semantic factor from hints ------------- */
+function makeSemLL(){
+  const K=S.placed.length;
+  let any=false;
+  for(const li of S.placed) if(S.layers[li].hints.length) any=true;
+  if(!any) return null;
+  return (i,k)=>{
+    const hs=S.layers[S.placed[k]].hints;
+    if(!hs.length) return 0;
+    let best=0;
+    for(const h of hs){
+      const d2=(S.obs[i][0]-h[0])**2+(S.obs[i][1]-h[1])**2;
+      best=Math.max(best,Math.exp(-0.5*d2/(HINT_SIG*HINT_SIG)));
+    }
+    return HINT_W*(best-0.5);
+  };
+}
+
+/* ------------- BP wiring + depth occlusion ------------- */
+function currentTemplates(){ return S.placed.map(li=>S.layers[li].template); }
+
+function computeEvidence(){
+  const K=S.placed.length;
+  if(!document.getElementById("auto-occ").checked || !S.assign){
+    S.evid=S.obs.map((_,i)=>{
+      const g=believedGroup(i);
+      return !(g>=0 && S.layers[S.placed[g]].hidden);
+    });
+    S.covFrac=S.placed.map((li,k)=>S.layers[li].hidden?1:0);
+    return;
+  }
+  const layersMeta=S.placed.map(li=>({depth:S.layers[li].depth,hidden:S.layers[li].hidden}));
+  const {mask,covFrac}=autoHidden(S.obs,S.assign,layersMeta,S.groupAlpha,RES);
+  S.evid=mask.map(m=>!m);
+  S.covFrac=covFrac;
+}
+
+function runBind(opts={}){
+  const hiddenMask=S.evid.map(e=>!e);
+  const frames=[];
+  const res=bpBind(currentTemplates(),S.obs,{
+    iters:opts.iters??40,
+    clampPose:opts.clampPose??null,
+    hiddenMask,
+    semLL:makeSemLL(),
+    onIter:(it,marg,mu,Sig)=>{ if(opts.animate) frames.push({
+      marg,mu:mu.map(m=>m.slice()),Sig:Sig.map(M=>M.map(r=>r.slice()))}); },
+  });
+  return {res,frames};
+}
+
+function bind(animate=true){
+  if(S.phase==="binding"||!S.placed.length) return;
+  S.assign=null;
+  S.evid=S.obs.map(()=>true);      // full re-bind: everything is evidence again
+  for(const li of S.placed) if(S.layers[li].hidden){
+    // user-hidden layers stay evidence-free
+    // (their atoms are excluded per-atom below via gt at soup time)
+  }
+  setPhase("binding");
+  setTimeout(()=>{
+    const {res,frames}=runBind({iters:40,animate});
+    if(!animate){finishBind(res);return;}
+    let f=0;
+    const meter=document.querySelector("#bind-meter > div");
+    const step=()=>{
+      if(f<frames.length){
+        S.marg=frames[f].marg;S.mu=frames[f].mu;S.Sig=frames[f].Sig;
+        updateAssign();
+        meter.style.width=(100*(f+1)/frames.length)+"%";
+        document.getElementById("m-it").textContent=(f+1);
+        drawOverlay();updatePanels();
+        f++;requestAnimationFrame(step);
+      } else finishBind(res);
+    };
+    step();
+  },30);
+}
+function finishBind(res){
+  S.marg=res.marg;S.mu=res.mu;S.Sig=res.Sig;
+  updateAssign();
+  rebuildGroupBuffers();
+  occlusionRefresh(true);
+  renderScene();refreshOwnership();
+  setPhase("bound");
+  drawOverlay();updatePanels();renderLayerList();
+}
+
+/* recompute evidence from the depth stack; if it changed, refresh marginals
+   with all poses clamped (occlusion changes evidence, not where things are) */
+function occlusionRefresh(silent){
+  const before=S.evid.join("");
+  computeEvidence();
+  if(S.evid.join("")===before) return;
+  const clamp=S.mu.map(m=>m.slice());
+  const {res}=runBind({iters:8,clampPose:clamp});
+  S.marg=res.marg;
+  updateAssign();
+  // coasting for heavily covered layers
+  for(let k=0;k<S.placed.length;k++)
+    S.coastT[k]=(S.covFrac[k]>0.7||S.layers[S.placed[k]].hidden)?S.coastT[k]+1:0;
+  if(!silent){drawOverlay();updatePanels();renderLayerList();}
+}
+
+function refreshOwnership(){
+  if(!S.marg){S.ownField=null;return;}
+  const K=S.placed.length;
+  const vis=[],visMarg=[];
+  for(let i=0;i<S.obs.length;i++){
+    const g=believedGroup(i);
+    if(g>=0&&S.layers[S.placed[g]].hidden) continue;
+    vis.push(S.obs[i]);visMarg.push(S.marg[i]);
+  }
+  S.ownField=ownershipField(vis,visMarg,K,OWN_RES);
+}
+
+function resettle(k,clampXi){
+  const clamp=S.placed.map(()=>null);clamp[k]=clampXi;
+  const {res}=runBind({iters:10,clampPose:clamp});
+  S.marg=res.marg;S.mu=res.mu;S.Sig=res.Sig;
+  S.mu[k]=clampXi.slice();
+  updateAssign();
+  rebuildGroupBuffers();
+  occlusionRefresh(true);
+  renderScene();refreshOwnership();
+  drawOverlay();updatePanels();renderLayerList();
+  document.getElementById("m-it").textContent="10 (re-settle)";
+}
+
+/* ------------- interventions ------------- */
+function applyGesture(k,g){
+  for(const i of groupAtomIdx(k)) S.obs[i]=transformAtoms([S.obs[i]],g)[0];
+  S.mu[k]=composePose(g,S.mu[k]);
+  rebuildOneGroup(k);
+  renderScene();drawOverlay();updatePanels();
+}
+
+/* ------------- pointer interaction ------------- */
+let drag=null;
+overC.addEventListener("pointerdown",e=>{
+  const rect=overC.getBoundingClientRect();
+  const wx=p2w((e.clientX-rect.left)*overC.width/rect.width);
+  const wy=p2w((e.clientY-rect.top)*overC.width/rect.width);
+  if(e.shiftKey){                       // semantic hint for the selected layer
+    const li=S.selected;
+    if(li>=0&&S.layers[li].placed){
+      S.layers[li].hints.push([wx,wy]);
+      drawOverlay();renderLayerList();
+      document.getElementById("prompt-log").textContent=
+        `hint added for ${S.layers[li].name} — Bind applies it as a location prior.`;
+    }
+    return;
+  }
+  if(S.phase!=="bound") return;
+  let best=-1,bd=0.12*0.12;
+  for(let i=0;i<S.obs.length;i++){
+    const g=believedGroup(i);
+    if(g<0) continue;
+    if(S.layers[S.placed[g]].hidden) continue;
+    const d=(S.obs[i][0]-wx)**2+(S.obs[i][1]-wy)**2;
+    if(d<bd){bd=d;best=i;}
+  }
+  let k=best>=0?believedGroup(best):-1;
+  if(k<0) for(let kk=0;kk<S.placed.length;kk++)
+    if((S.layers[S.placed[kk]].hidden||S.covFrac[kk]>0.7)&&
+       (S.mu[kk][0]-wx)**2+(S.mu[kk][1]-wy)**2<0.05*0.05) k=kk;
+  if(k<0) return;
+  drag={k,lx:wx,ly:wy,moved:false};
+  overC.classList.add("dragging");
+  overC.setPointerCapture(e.pointerId);
+});
+overC.addEventListener("pointermove",e=>{
+  if(!drag) return;
+  const rect=overC.getBoundingClientRect();
+  const wx=p2w((e.clientX-rect.left)*overC.width/rect.width);
+  const wy=p2w((e.clientY-rect.top)*overC.width/rect.width);
+  const dx=wx-drag.lx,dy=wy-drag.ly;
+  if(dx||dy){applyGesture(drag.k,gestureTranslate(dx,dy));drag.lx=wx;drag.ly=wy;drag.moved=true;}
+});
+overC.addEventListener("pointerup",e=>{
+  if(!drag) return;
+  overC.classList.remove("dragging");
+  if(drag.moved) resettle(drag.k,S.mu[drag.k]);
+  drag=null;
+});
+overC.addEventListener("wheel",e=>{
+  if(S.phase!=="bound") return;
+  const rect=overC.getBoundingClientRect();
+  const wx=p2w((e.clientX-rect.left)*overC.width/rect.width);
+  const wy=p2w((e.clientY-rect.top)*overC.width/rect.width);
+  let k=-1,bd=0.16*0.16;
+  for(let kk=0;kk<S.placed.length;kk++){
+    const d=(S.mu[kk][0]-wx)**2+(S.mu[kk][1]-wy)**2;
+    if(d<bd){bd=d;k=kk;}
+  }
+  if(k<0) return;
+  e.preventDefault();
+  const c=[S.mu[k][0],S.mu[k][1]];
+  const g=e.shiftKey?gestureScaleAbout(c,e.deltaY>0?-0.05:0.05)
+                    :gestureRotateAbout(c,e.deltaY>0?0.08:-0.08);
+  applyGesture(k,g);
+  clearTimeout(overC._wt);
+  overC._wt=setTimeout(()=>resettle(k,S.mu[k]),350);
+},{passive:false});
+
+/* ------------- panels ------------- */
+function setPhase(p){
+  S.phase=p;
+  const lamp=document.getElementById("state-lamp");
+  lamp.className=p==="soup"?"soup":p==="binding"?"binding":"bound";
+  lamp.textContent=p==="soup"?"ATOM SOUP":p==="binding"?"BELIEFS SETTLING":"BOUND — GRABBABLE";
+  document.getElementById("btn-bind").disabled=p==="binding"||!S.placed.length;
+}
+
+function renderLayerList(){
+  const el=document.getElementById("layer-list");
+  el.innerHTML="";
+  const byDepth=[...S.placed].map((li,k)=>({li,k}))
+    .sort((a,b)=>S.layers[b.li].depth-S.layers[a.li].depth);
+  for(const {li,k} of byDepth){
+    const L=S.layers[li];
+    const idx=S.assign?groupAtomIdx(k):[];
+    const conf=idx.length?idx.reduce((a,i)=>a+(S.evid[i]?S.marg[i][k]:0),0)/Math.max(1,idx.filter(i=>S.evid[i]).length):0;
+    const cov=S.covFrac[k]||0;
+    const d=document.createElement("div");
+    d.className="layer"+(S.selected===li?" sel":"");
+    d.innerHTML=`
+      <div class="name" data-li="${li}">
+        <span class="swatch" style="background:${L.color}"></span>
+        <span>${L.name}</span>
+        <span class="dim">${idx.length||L.template.length} atoms${L.hints.length?` · ${L.hints.length} hint${L.hints.length>1?"s":""}`:""}</span>
+        <span class="spacer"></span>
+        <div class="belief-bar"><div style="width:${100*conf}%"></div></div>
+      </div>
+      <div class="pose">${S.mu?`t=(${S.mu[k][0].toFixed(2)}, ${S.mu[k][1].toFixed(2)}) \u03c1=${(S.mu[k][2]*180/Math.PI).toFixed(0)}\u00b0 s=${Math.exp(S.mu[k][3]).toFixed(2)}`:"pose: unbound"}${cov>0.05?` · <span style="color:var(--entropy)">${(100*cov).toFixed(0)}% occluded${S.coastT[k]?`, coasting ${S.coastT[k]}`:""}</span>`:""}</div>
+      <div class="ctl">
+        <button data-li="${li}" data-op="rotl">&#8634;</button>
+        <button data-li="${li}" data-op="rotr">&#8635;</button>
+        <button data-li="${li}" data-op="grow">+</button>
+        <button data-li="${li}" data-op="shrink">&minus;</button>
+        <button data-li="${li}" data-op="front">front</button>
+        <button data-li="${li}" data-op="back">back</button>
+        <button data-li="${li}" data-op="hide">${L.hidden?"reveal":"hide"}</button>
+        ${L.hints.length?`<button data-li="${li}" data-op="clearhints">hints&nbsp;&#10005;</button>`:""}
+        <button data-li="${li}" data-op="remove">&#10005;</button>
+      </div>`;
+    el.appendChild(d);
+  }
+  if(!byDepth.length)
+    el.innerHTML='<div class="dim" style="font-size:11px">no layers placed — place from the library or spawn one</div>';
+}
+document.getElementById("layer-list").addEventListener("click",e=>{
+  const nm=e.target.closest(".name");
+  if(nm&&!e.target.closest("button")){
+    S.selected=+nm.dataset.li===S.selected?-1:+nm.dataset.li;
+    renderLayerList();return;
+  }
+  const b=e.target.closest("button");if(!b)return;
+  const li=+b.dataset.li,op=b.dataset.op;
+  const k=S.placed.indexOf(li);
+  if(op==="remove"){removeLayer(li);return;}
+  if(op==="clearhints"){S.layers[li].hints=[];drawOverlay();renderLayerList();return;}
+  if(op==="front"||op==="back"){
+    S.layers[li].depth=op==="front"?nextDepth++:(Math.min(...S.placed.map(x=>S.layers[x].depth))-1);
+    if(S.phase==="bound"){rebuildGroupBuffers();occlusionRefresh(false);renderScene();refreshOwnership();}
+    renderLayerList();return;
+  }
+  if(S.phase!=="bound")return;
+  if(op==="hide"){
+    S.layers[li].hidden=!S.layers[li].hidden;
+    rebuildGroupBuffers();occlusionRefresh(false);renderScene();refreshOwnership();drawOverlay();renderLayerList();
+    return;
+  }
+  const c=[S.mu[k][0],S.mu[k][1]];
+  if(op==="rotl"){applyGesture(k,gestureRotateAbout(c,-Math.PI/12));resettle(k,S.mu[k]);}
+  if(op==="rotr"){applyGesture(k,gestureRotateAbout(c,Math.PI/12));resettle(k,S.mu[k]);}
+  if(op==="grow"){applyGesture(k,gestureScaleAbout(c,0.12));resettle(k,S.mu[k]);}
+  if(op==="shrink"){applyGesture(k,gestureScaleAbout(c,-0.12));resettle(k,S.mu[k]);}
+});
+
+function renderLibrary(){
+  const el=document.getElementById("library");
+  el.innerHTML="";
+  S.layers.forEach((L,li)=>{
+    if(L.placed) return;
+    const c=document.createElement("span");
+    c.className="chip";
+    c.innerHTML=`<span class="swatch" style="background:${L.color}"></span>${L.name}
+      <span class="dim">${L.template.length}</span>
+      <button data-li="${li}" data-op="place" title="place">+</button>`;
+    el.appendChild(c);
+  });
+}
+document.getElementById("library").addEventListener("click",e=>{
+  const b=e.target.closest("button");if(!b)return;
+  placeLayer(+b.dataset.li);
+});
+
+function updatePanels(){
+  document.getElementById("m-n").textContent=S.obs.length;
+  const K=S.placed.length;
+  if(!S.marg){
+    document.getElementById("m-acc").textContent="—";
+    document.getElementById("m-ent").textContent="—";
+    return;
+  }
+  let correct=0;
+  for(let i=0;i<S.gt.length;i++) if(believedGroup(i)===S.gt[i]) correct++;
+  document.getElementById("m-acc").textContent=(100*correct/S.gt.length).toFixed(1)+"%";
+  const ent=atomEntropy(S.marg);
+  document.getElementById("m-ent").textContent=
+    (ent.reduce((a,x)=>a+x,0)/ent.length).toFixed(2)+" bits";
+}
+
+/* ------------- spawn: server endpoints ------------- */
+const spawnStatus=document.getElementById("spawn-status");
+async function gradioCall(name,data){
+  const base=location.pathname.includes("/studio/")?"..":"";
+  const r=await fetch(`${base}/gradio_api/call/${name}`,{
+    method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({data})});
+  const {event_id}=await r.json();
+  const resp=await fetch(`${base}/gradio_api/call/${name}/${event_id}`);
+  const text=await resp.text();
+  const lines=text.split("\n").filter(l=>l.startsWith("data:"));
+  if(!lines.length) throw new Error("no data from server");
+  const payload=JSON.parse(lines[lines.length-1].slice(5));
+  if(payload==null||payload.error) throw new Error(payload?.error||"server error");
+  return JSON.parse(payload[0]);
+}
+function addGenerated(layer,fallbackName){
+  const name=(layer.ledger&&layer.ledger.prompt)
+    ? (layer.ledger.attention&&layer.ledger.attention.token!=="(all content tokens)"
+        ? layer.ledger.attention.token : layer.ledger.prompt.split(/[ ,]/)[1]||fallbackName)
+    : fallbackName;
+  addLayer(name,layer.atoms,true);
+  spawnStatus.textContent=`layer "${name}": ${layer.atoms.length} atoms · ${layer.ledger.status}`+
+    (layer.ledger.attention?` · matte kept ${layer.ledger.attention.atoms_after_matte}/${layer.ledger.attention.atoms_before_matte}`:"");
+}
+document.getElementById("btn-spawn-text").addEventListener("click",async()=>{
+  const prompt=document.getElementById("spawn-prompt").value.trim();
+  const token=document.getElementById("spawn-token").value.trim();
+  if(!prompt){spawnStatus.textContent="write a prompt first";return;}
+  spawnStatus.textContent="distilling on the server (GPU, minutes)\u2026";
+  try{
+    const layer=await gradioCall("layer_from_text",[prompt,"",192,900,30,token,0.35]);
+    addGenerated(layer,"generated");
+  }catch(err){spawnStatus.textContent="distill failed: "+err.message+
+    " (needs a GPU Space; on CPU use Fit or paste JSON)";}
+});
+document.getElementById("btn-spawn-img").addEventListener("click",async()=>{
+  const f=document.getElementById("spawn-file").files[0];
+  if(!f){spawnStatus.textContent="choose an image first";return;}
+  spawnStatus.textContent="fitting atoms to the image (CPU, ~1 min)\u2026";
+  try{
+    const b64=await new Promise((res,rej)=>{
+      const img=new Image();
+      img.onload=()=>{
+        const c=document.createElement("canvas");
+        const s=Math.min(1,160/Math.max(img.width,img.height));
+        c.width=Math.round(img.width*s);c.height=Math.round(img.height*s);
+        c.getContext("2d").drawImage(img,0,0,c.width,c.height);
+        res(c.toDataURL("image/png").split(",")[1]);
+      };
+      img.onerror=rej;
+      img.src=URL.createObjectURL(f);
+    });
+    const layer=await gradioCall("layer_from_image_b64",[b64,140,400]);
+    addGenerated(layer,f.name.replace(/\.[^.]+$/,""));
+  }catch(err){spawnStatus.textContent="fit failed: "+err.message+
+    " (is this page running from the Space? standalone files can only paste JSON)";}
+});
+document.getElementById("btn-spawn-json").addEventListener("click",()=>{
+  try{
+    const raw=JSON.parse(document.getElementById("spawn-json").value);
+    const atoms=raw.atoms||raw;
+    if(!Array.isArray(atoms)||atoms[0].length!==10) throw new Error("expect [[10 fields]...]");
+    addLayer("pasted-"+nextId,atoms,true);
+    spawnStatus.textContent=`pasted layer: ${atoms.length} atoms`;
+    document.getElementById("spawn-json").value="";
+  }catch(err){spawnStatus.textContent="bad JSON: "+err.message;}
+});
+
+/* ------------- prompt as intervention ------------- */
+const promptLog=document.getElementById("prompt-log");
+function layerByName(part){
+  for(let k=0;k<S.placed.length;k++)
+    if(part.includes(S.layers[S.placed[k]].name.toLowerCase())) return k;
+  return -1;
+}
+function localParse(text){
+  const t=text.toLowerCase(),ops=[];
+  for(const part of t.split(/,|;| and /)){
+    const k=layerByName(part);
+    if(k<0) continue;
+    if(/hide|occlude/.test(part)){ops.push({op:"hide",k});continue;}
+    if(/show|reveal|unhide/.test(part)){ops.push({op:"show",k});continue;}
+    if(/front|top|forward/.test(part)&&/bring|put|move|send/.test(part)){ops.push({op:"front",k});continue;}
+    if(/back|behind|bottom/.test(part)&&/send|put|move|push/.test(part)){ops.push({op:"back",k});continue;}
+    const deg=part.match(/(-?\d+)\s*(deg|\u00b0)?/);
+    if(/rotate|turn|spin/.test(part))
+      ops.push({op:"rotate",k,deg:deg?+deg[1]:30*(/left|counter|ccw/.test(part)?-1:1)});
+    if(/scale|grow|bigger|larger|shrink|smaller/.test(part))
+      ops.push({op:"scale",k,ds:/shrink|smaller/.test(part)?-0.15:0.15});
+    if(/move|push|slide|put|drag/.test(part)){
+      let dx=0,dy=0;const step=0.22;
+      if(/left/.test(part))dx-=step;
+      if(/right/.test(part))dx+=step;
+      if(/up|top/.test(part))dy-=step;
+      if(/down|bottom/.test(part))dy+=step;
+      if(/center|middle/.test(part))ops.push({op:"moveto",k,x:0,y:0});
+      else if(dx||dy)ops.push({op:"move",k,dx,dy});
+    }
+  }
+  return ops;
+}
+async function claudeParse(text){
+  const names=S.placed.map(li=>S.layers[li].name);
+  const sceneDesc=S.placed.map((li,k)=>
+    `${S.layers[li].name}: t=(${S.mu[k][0].toFixed(2)},${S.mu[k][1].toFixed(2)}) rho=${S.mu[k][2].toFixed(2)} scale=${Math.exp(S.mu[k][3]).toFixed(2)} depth=${S.layers[li].depth} hidden=${S.layers[li].hidden}`).join("; ");
+  const resp=await fetch("https://api.anthropic.com/v1/messages",{
+    method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,
+      messages:[{role:"user",content:
+`You control a probabilistic layered scene editor. Coordinates x,y in [-1,1], y grows DOWNWARD. Higher depth = in front. Layers: ${sceneDesc}.
+User command: "${text}"
+Respond ONLY with a JSON array (no prose, no fences) of ops:
+{"op":"move","object":<name>,"dx":n,"dy":n} {"op":"moveto","object":<name>,"x":n,"y":n}
+{"op":"rotate","object":<name>,"deg":n} {"op":"scale","object":<name>,"factor":n}
+{"op":"front","object":<name>} {"op":"back","object":<name>}
+{"op":"hide","object":<name>} {"op":"show","object":<name>}
+Valid names: ${JSON.stringify(names)}`}]})});
+  const data=await resp.json();
+  const txt=data.content.filter(c=>c.type==="text").map(c=>c.text).join("");
+  const arr=JSON.parse(txt.replace(/```json|```/g,"").trim());
+  return arr.map(o=>{
+    const k=S.placed.findIndex(li=>S.layers[li].name===o.object);
+    if(k<0)return null;
+    if(o.op==="move")return{op:"move",k,dx:o.dx,dy:o.dy};
+    if(o.op==="moveto")return{op:"moveto",k,x:o.x,y:o.y};
+    if(o.op==="rotate")return{op:"rotate",k,deg:o.deg};
+    if(o.op==="scale")return{op:"scale",k,ds:Math.log(o.factor)};
+    return{op:o.op,k};
+  }).filter(Boolean);
+}
+function execOps(ops){
+  if(!ops.length){promptLog.textContent="Parsed no intervention. Layers: "+
+    S.placed.map(li=>S.layers[li].name).join(", ")+". Verbs: move/rotate/scale/hide/show/front/back.";return;}
+  const touched=new Set();
+  for(const o of ops){
+    const li=S.placed[o.k];
+    if(o.op==="hide"&&!S.layers[li].hidden){S.layers[li].hidden=true;continue;}
+    if(o.op==="show"&&S.layers[li].hidden){S.layers[li].hidden=false;continue;}
+    if(o.op==="front"){S.layers[li].depth=nextDepth++;continue;}
+    if(o.op==="back"){S.layers[li].depth=Math.min(...S.placed.map(x=>S.layers[x].depth))-1;continue;}
+    const c=[S.mu[o.k][0],S.mu[o.k][1]];
+    if(o.op==="move"){applyGesture(o.k,gestureTranslate(o.dx,o.dy));touched.add(o.k);}
+    if(o.op==="moveto"){applyGesture(o.k,gestureTranslate(o.x-c[0],o.y-c[1]));touched.add(o.k);}
+    if(o.op==="rotate"){applyGesture(o.k,gestureRotateAbout(c,o.deg*Math.PI/180));touched.add(o.k);}
+    if(o.op==="scale"){applyGesture(o.k,gestureScaleAbout(c,o.ds));touched.add(o.k);}
+  }
+  for(const k of touched) resettle(k,S.mu[k]);
+  rebuildGroupBuffers();occlusionRefresh(true);renderScene();refreshOwnership();
+  drawOverlay();updatePanels();renderLayerList();
+  promptLog.textContent="Clamped: "+ops.map(o=>`${o.op} ${S.layers[S.placed[o.k]].name}`).join(", ")+
+    " — beliefs re-settled around the intervention.";
+}
+async function doPrompt(){
+  if(S.phase!=="bound"){promptLog.textContent="Bind first — there is nothing to address in a soup.";return;}
+  const text=document.getElementById("prompt").value.trim();
+  if(!text)return;
+  let ops=localParse(text);
+  if(!ops.length){
+    promptLog.textContent="Local grammar found nothing; asking Claude\u2026";
+    try{ops=await claudeParse(text);}
+    catch{promptLog.textContent="Claude unavailable outside claude.ai — try: move/rotate/scale/hide/front/back + a layer name.";return;}
+  }
+  execOps(ops);
+}
+document.getElementById("btn-prompt").addEventListener("click",doPrompt);
+document.getElementById("prompt").addEventListener("keydown",e=>{if(e.key==="Enter")doPrompt();});
+document.getElementById("auto-occ").addEventListener("change",()=>{
+  if(S.phase==="bound"){occlusionRefresh(false);renderScene();}
+});
+
+/* ------------- boot ------------- */
+document.getElementById("btn-scramble").addEventListener("click",scramble);
+document.getElementById("btn-bind").addEventListener("click",()=>bind(true));
+addLayer("tractor",BUILTINS.tractor,false);
+addLayer("star",BUILTINS.star,false);
+addLayer("boat",BUILTINS.boat,false);
+S.layers[0].placed=true;S.layers[0].depth=nextDepth++;S.layers[0].pose=[0.3,-0.25,0.3,Math.log(0.55)];
+S.layers[1].placed=true;S.layers[1].depth=nextDepth++;S.layers[1].pose=[-0.4,0.35,-0.9,Math.log(0.5)];
+fitStage();
+rebuildScene();
+</script>
+</body>
+</html>

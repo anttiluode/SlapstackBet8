@@ -1,0 +1,11 @@
+const fs = require("fs");
+const strip = (src) => src.replace(/if \(typeof module[^]*$/m, "");
+const core = strip(fs.readFileSync(__dirname + "/studio/core.js", "utf8"));
+const scoreJs = strip(fs.readFileSync(__dirname + "/studio/studio_core.js", "utf8"));
+const builtins = fs.readFileSync(__dirname + "/studio/builtins.json", "utf8");
+let html = fs.readFileSync(__dirname + "/studio_ui.html", "utf8");
+html = html.replace("/*CORE*/", core);
+html = html.replace("/*STUDIO_CORE*/", scoreJs);
+html = html.replace("/*BUILTINS*/null", builtins);
+fs.writeFileSync(__dirname + "/studio/studio.html", html);
+console.log("built studio/studio.html:", (html.length / 1024).toFixed(0), "KB");
