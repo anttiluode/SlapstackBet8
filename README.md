@@ -2,6 +2,8 @@
 
 Live at huggingface: https://huggingface.co/spaces/Aluode/SlapStackStudio
 
+Video: [https://studio.youtube.com/video/a-emh7csWQk/edit](https://youtu.be/a-emh7csWQk)
+
 ![pic2](pic2.png)
 
 An interactive, layered visual sandbox running multi-object Belief Propagation (BP) over Gabor packet representations. The system supports full 2D depth occlusion matting, spatial grab/drag/scale/rotate mechanics, semantic prompt interventions, and server-side neural layer distillation via Score Distillation Sampling (SDS).
